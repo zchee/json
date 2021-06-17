@@ -188,15 +188,15 @@ type (
 	structMethodJSONv2  struct{ value string }
 	structMethodJSONv1  struct{ value string }
 	structMethodText    struct{ value string }
-	marshalJSONv2Func   func(*Encoder, MarshalOptions) error
+	marshalJSONv2Func   func(MarshalOptions, *Encoder) error
 	marshalJSONv1Func   func() ([]byte, error)
 	marshalTextFunc     func() ([]byte, error)
-	unmarshalJSONv2Func func(*Decoder, UnmarshalOptions) error
+	unmarshalJSONv2Func func(UnmarshalOptions, *Decoder) error
 	unmarshalJSONv1Func func([]byte) error
 	unmarshalTextFunc   func([]byte) error
 )
 
-func (p *allMethods) MarshalNextJSON(enc *Encoder, mo MarshalOptions) error {
+func (p *allMethods) MarshalNextJSON(mo MarshalOptions, enc *Encoder) error {
 	if got, want := "MarshalNextJSON", p.method; got != want {
 		return fmt.Errorf("called wrong method: got %v, want %v", got, want)
 	}
@@ -215,7 +215,7 @@ func (p *allMethods) MarshalText() ([]byte, error) {
 	return p.value, nil
 }
 
-func (p *allMethods) UnmarshalNextJSON(dec *Decoder, uo UnmarshalOptions) error {
+func (p *allMethods) UnmarshalNextJSON(uo UnmarshalOptions, dec *Decoder) error {
 	p.method = "UnmarshalNextJSON"
 	val, err := dec.ReadValue()
 	p.value = val
@@ -232,10 +232,10 @@ func (p *allMethods) UnmarshalText(val []byte) error {
 	return nil
 }
 
-func (s structMethodJSONv2) MarshalNextJSON(enc *Encoder, mo MarshalOptions) error {
+func (s structMethodJSONv2) MarshalNextJSON(mo MarshalOptions, enc *Encoder) error {
 	return enc.WriteToken(String(s.value))
 }
-func (s *structMethodJSONv2) UnmarshalNextJSON(dec *Decoder, uo UnmarshalOptions) error {
+func (s *structMethodJSONv2) UnmarshalNextJSON(uo UnmarshalOptions, dec *Decoder) error {
 	tok, err := dec.ReadToken()
 	if err != nil {
 		return err
@@ -267,8 +267,8 @@ func (s *structMethodText) UnmarshalText(b []byte) error {
 	return nil
 }
 
-func (f marshalJSONv2Func) MarshalNextJSON(enc *Encoder, mo MarshalOptions) error {
-	return f(enc, mo)
+func (f marshalJSONv2Func) MarshalNextJSON(mo MarshalOptions, enc *Encoder) error {
+	return f(mo, enc)
 }
 func (f marshalJSONv1Func) MarshalJSON() ([]byte, error) {
 	return f()
@@ -276,8 +276,8 @@ func (f marshalJSONv1Func) MarshalJSON() ([]byte, error) {
 func (f marshalTextFunc) MarshalText() ([]byte, error) {
 	return f()
 }
-func (f unmarshalJSONv2Func) UnmarshalNextJSON(dec *Decoder, uo UnmarshalOptions) error {
-	return f(dec, uo)
+func (f unmarshalJSONv2Func) UnmarshalNextJSON(uo UnmarshalOptions, dec *Decoder) error {
+	return f(uo, dec)
 }
 func (f unmarshalJSONv1Func) UnmarshalJSON(b []byte) error {
 	return f(b)
@@ -1135,19 +1135,19 @@ func TestMarshal(t *testing.T) {
 		canonicalize: true,
 	}, {
 		name: "Methods/Invalid/JSONv2/Error",
-		in: marshalJSONv2Func(func(*Encoder, MarshalOptions) error {
+		in: marshalJSONv2Func(func(MarshalOptions, *Encoder) error {
 			return errors.New("some error")
 		}),
 		wantErr: &SemanticError{action: "marshal", GoType: marshalJSONv2FuncType, Err: errors.New("some error")},
 	}, {
 		name: "Methods/Invalid/JSONv2/TooFew",
-		in: marshalJSONv2Func(func(*Encoder, MarshalOptions) error {
+		in: marshalJSONv2Func(func(MarshalOptions, *Encoder) error {
 			return nil // do nothing
 		}),
 		wantErr: &SemanticError{action: "marshal", GoType: marshalJSONv2FuncType, Err: errors.New("must write exactly one JSON value")},
 	}, {
 		name: "Methods/Invalid/JSONv2/TooMany",
-		in: marshalJSONv2Func(func(enc *Encoder, mo MarshalOptions) error {
+		in: marshalJSONv2Func(func(mo MarshalOptions, enc *Encoder) error {
 			enc.WriteToken(Null)
 			enc.WriteToken(Null)
 			return nil
@@ -1181,7 +1181,7 @@ func TestMarshal(t *testing.T) {
 	}, {
 		name: "Methods/Invalid/MapKey/JSONv2/Syntax",
 		in: map[interface{}]string{
-			addr(marshalJSONv2Func(func(enc *Encoder, mo MarshalOptions) error {
+			addr(marshalJSONv2Func(func(mo MarshalOptions, enc *Encoder) error {
 				return enc.WriteToken(Null)
 			})): "invalid",
 		},
@@ -3014,20 +3014,20 @@ func TestUnmarshal(t *testing.T) {
 	}, {
 		name:  "Methods/Invalid/JSONv2/Error",
 		inBuf: `{}`,
-		inVal: addr(unmarshalJSONv2Func(func(*Decoder, UnmarshalOptions) error {
+		inVal: addr(unmarshalJSONv2Func(func(UnmarshalOptions, *Decoder) error {
 			return errors.New("some error")
 		})),
 		wantErr: &SemanticError{action: "unmarshal", GoType: unmarshalJSONv2FuncType, Err: errors.New("some error")},
 	}, {
 		name: "Methods/Invalid/JSONv2/TooFew",
-		inVal: addr(unmarshalJSONv2Func(func(*Decoder, UnmarshalOptions) error {
+		inVal: addr(unmarshalJSONv2Func(func(UnmarshalOptions, *Decoder) error {
 			return nil // do nothing
 		})),
 		wantErr: &SemanticError{action: "unmarshal", GoType: unmarshalJSONv2FuncType, Err: errors.New("must read exactly one JSON value")},
 	}, {
 		name:  "Methods/Invalid/JSONv2/TooMany",
 		inBuf: `{}{}`,
-		inVal: addr(unmarshalJSONv2Func(func(dec *Decoder, uo UnmarshalOptions) error {
+		inVal: addr(unmarshalJSONv2Func(func(uo UnmarshalOptions, dec *Decoder) error {
 			dec.ReadValue()
 			dec.ReadValue()
 			return nil

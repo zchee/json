@@ -36,7 +36,7 @@ type MarshalerV1 interface {
 //
 // The implementation must write only one JSON value to the Encoder.
 type MarshalerV2 interface {
-	MarshalNextJSON(*Encoder, MarshalOptions) error
+	MarshalNextJSON(MarshalOptions, *Encoder) error
 
 	// TODO: Should users call the MarshalOptions.MarshalNext method or
 	// should/can they call this method directly? Does it matter?
@@ -65,7 +65,7 @@ type UnmarshalerV1 interface {
 // It is recommended that UnmarshalNextJSON implement merge semantics when
 // unmarshaling into a pre-populated value.
 type UnmarshalerV2 interface {
-	UnmarshalNextJSON(*Decoder, UnmarshalOptions) error
+	UnmarshalNextJSON(UnmarshalOptions, *Decoder) error
 
 	// TODO: Should users call the UnmarshalOptions.UnmarshalNext method or
 	// should/can they call this method directly? Does it matter?
@@ -84,7 +84,7 @@ func makeMethodArshaler(fncs *arshaler, t reflect.Type) *arshaler {
 	case jsonMarshalerV2Type:
 		fncs.marshal = func(mo MarshalOptions, enc *Encoder, va addressableValue) error {
 			prevDepth, prevLength := enc.tokens.depthLength()
-			err := va.addrWhen(needAddr).Interface().(MarshalerV2).MarshalNextJSON(enc, mo)
+			err := va.addrWhen(needAddr).Interface().(MarshalerV2).MarshalNextJSON(mo, enc)
 			currDepth, currLength := enc.tokens.depthLength()
 			if (prevDepth != currDepth || prevLength+1 != currLength) && err == nil {
 				err = errors.New("must write exactly one JSON value")
@@ -135,7 +135,7 @@ func makeMethodArshaler(fncs *arshaler, t reflect.Type) *arshaler {
 	case jsonUnmarshalerV2Type:
 		fncs.unmarshal = func(uo UnmarshalOptions, dec *Decoder, va addressableValue) error {
 			prevDepth, prevLength := dec.tokens.depthLength()
-			err := va.addrWhen(needAddr).Interface().(UnmarshalerV2).UnmarshalNextJSON(dec, uo)
+			err := va.addrWhen(needAddr).Interface().(UnmarshalerV2).UnmarshalNextJSON(uo, dec)
 			currDepth, currLength := dec.tokens.depthLength()
 			if (prevDepth != currDepth || prevLength+1 != currLength) && err == nil {
 				err = errors.New("must read exactly one JSON value")

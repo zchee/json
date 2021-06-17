@@ -85,7 +85,9 @@ func (mo MarshalOptions) MarshalNext(out *Encoder, in interface{}) error {
 
 	// Lookup and call the marshal function for this type.
 	marshal := lookupArshaler(t).marshal
-	// TODO: Handle custom marshalers.
+	if mo.Marshalers != nil {
+		marshal = mo.Marshalers.lookup(marshal, t)
+	}
 	return marshal(mo, out, va)
 }
 
@@ -169,7 +171,9 @@ func (uo UnmarshalOptions) UnmarshalNext(in *Decoder, out interface{}) error {
 
 	// Lookup and call the unmarshal function for this type.
 	unmarshal := lookupArshaler(t).unmarshal
-	// TODO: Handle custom unmarshalers.
+	if uo.Unmarshalers != nil {
+		unmarshal = uo.Unmarshalers.lookup(unmarshal, t)
+	}
 	return unmarshal(uo, in, va)
 }
 
@@ -188,8 +192,8 @@ func newAddressableValue(t reflect.Type) addressableValue {
 
 // All marshal and unmarshal behavior is implemented using these signatures.
 type (
-	marshaler   func(MarshalOptions, *Encoder, addressableValue) error
-	unmarshaler func(UnmarshalOptions, *Decoder, addressableValue) error
+	marshaler   = func(MarshalOptions, *Encoder, addressableValue) error
+	unmarshaler = func(UnmarshalOptions, *Decoder, addressableValue) error
 )
 
 type arshaler struct {

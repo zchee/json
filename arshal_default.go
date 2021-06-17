@@ -409,9 +409,12 @@ func makeMapArshaler(t reflect.Type) *arshaler {
 			mko.StringifyNumbers = true
 
 			once.Do(init)
-			// TODO: Handle custom arshalers.
 			marshalKey := keyFncs.marshal
 			marshalVal := valFncs.marshal
+			if mo.Marshalers != nil {
+				marshalKey = mo.Marshalers.lookup(marshalKey, t.Key())
+				marshalVal = mo.Marshalers.lookup(marshalVal, t.Elem())
+			}
 			k := newAddressableValue(t.Key())
 			v := newAddressableValue(t.Elem())
 			// NOTE: Map entries are serialized in a non-deterministic order.
@@ -455,9 +458,12 @@ func makeMapArshaler(t reflect.Type) *arshaler {
 			uko.StringifyNumbers = true
 
 			once.Do(init)
-			// TODO: Handle custom arshalers.
 			unmarshalKey := keyFncs.unmarshal
 			unmarshalVal := valFncs.unmarshal
+			if uo.Unmarshalers != nil {
+				unmarshalKey = uo.Unmarshalers.lookup(unmarshalKey, t.Key())
+				unmarshalVal = uo.Unmarshalers.lookup(unmarshalVal, t.Elem())
+			}
 			k := newAddressableValue(t.Key())
 			v := newAddressableValue(t.Elem())
 			for dec.PeekKind() != '}' {
@@ -497,6 +503,7 @@ func makeStructArshaler(t reflect.Type) *arshaler {
 	var fncs arshaler
 	type field struct {
 		index int // index into reflect.StructField.Field
+		typ   reflect.Type
 		fncs  *arshaler
 		fieldOptions
 	}
@@ -530,6 +537,7 @@ func makeStructArshaler(t reflect.Type) *arshaler {
 			fieldsByName[options.name] = len(fields)
 			fields = append(fields, field{
 				index:        i,
+				typ:          sf.Type,
 				fncs:         lookupArshaler(sf.Type),
 				fieldOptions: options,
 			})
@@ -570,7 +578,10 @@ func makeStructArshaler(t reflect.Type) *arshaler {
 			if err := enc.WriteToken(String(f.name)); err != nil {
 				return err
 			}
-			marshal := f.fncs.marshal // TODO: Handle custom arshalers.
+			marshal := f.fncs.marshal
+			if mo.Marshalers != nil {
+				marshal = mo.Marshalers.lookup(marshal, f.typ)
+			}
 			mo2 := mo
 			mo2.StringifyNumbers = mo2.StringifyNumbers || f.string
 			if err := marshal(mo2, enc, v); err != nil {
@@ -625,7 +636,10 @@ func makeStructArshaler(t reflect.Type) *arshaler {
 				f := fields[i]
 
 				// Process the object member value.
-				unmarshal := f.fncs.unmarshal // TODO: Handle custom arshalers.
+				unmarshal := f.fncs.unmarshal
+				if uo.Unmarshalers != nil {
+					unmarshal = uo.Unmarshalers.lookup(unmarshal, f.typ)
+				}
 				uo2 := uo
 				uo2.StringifyNumbers = uo2.StringifyNumbers || f.string
 				v := addressableValue{va.Field(f.index)} // addressable if struct value is addressable
@@ -665,7 +679,10 @@ func makeSliceArshaler(t reflect.Type) *arshaler {
 			return err
 		}
 		once.Do(init)
-		marshal := valFncs.marshal // TODO: Handle custom arshalers.
+		marshal := valFncs.marshal
+		if mo.Marshalers != nil {
+			marshal = mo.Marshalers.lookup(marshal, t.Elem())
+		}
 		for i := 0; i < va.Len(); i++ {
 			v := addressableValue{va.Index(i)} // indexed slice element is always addressable
 			if err := marshal(mo, enc, v); err != nil {
@@ -689,7 +706,10 @@ func makeSliceArshaler(t reflect.Type) *arshaler {
 			return nil
 		case '[':
 			once.Do(init)
-			unmarshal := valFncs.unmarshal // TODO: Handle custom arshalers.
+			unmarshal := valFncs.unmarshal
+			if uo.Unmarshalers != nil {
+				unmarshal = uo.Unmarshalers.lookup(unmarshal, t.Elem())
+			}
 			va.Set(va.Slice(0, 0))
 			var i int
 			for dec.PeekKind() != ']' {
@@ -727,7 +747,10 @@ func makeArrayArshaler(t reflect.Type) *arshaler {
 			return err
 		}
 		once.Do(init)
-		marshal := valFncs.marshal // TODO: Handle custom arshalers.
+		marshal := valFncs.marshal
+		if mo.Marshalers != nil {
+			marshal = mo.Marshalers.lookup(marshal, t.Elem())
+		}
 		for i := 0; i < t.Len(); i++ {
 			v := addressableValue{va.Index(i)} // indexed array element is addressable if array is addressable
 			if err := marshal(mo, enc, v); err != nil {
@@ -751,7 +774,10 @@ func makeArrayArshaler(t reflect.Type) *arshaler {
 			return nil
 		case '[':
 			once.Do(init)
-			unmarshal := valFncs.unmarshal // TODO: Handle custom arshalers.
+			unmarshal := valFncs.unmarshal
+			if uo.Unmarshalers != nil {
+				unmarshal = uo.Unmarshalers.lookup(unmarshal, t.Elem())
+			}
 			var i int
 			for dec.PeekKind() != ']' {
 				if i >= t.Len() {
@@ -801,7 +827,10 @@ func makePtrArshaler(t reflect.Type) *arshaler {
 			return enc.WriteToken(Null)
 		}
 		once.Do(init)
-		marshal := valFncs.marshal       // TODO: Handle custom arshalers. Should this occur before the nil check?
+		marshal := valFncs.marshal
+		if mo.Marshalers != nil {
+			marshal = mo.Marshalers.lookup(marshal, t.Elem())
+		}
 		v := addressableValue{va.Elem()} // dereferenced pointer is always addressable
 		return marshal(mo, enc, v)
 	}
@@ -814,7 +843,10 @@ func makePtrArshaler(t reflect.Type) *arshaler {
 			return nil
 		}
 		once.Do(init)
-		unmarshal := valFncs.unmarshal // TODO: Handle custom arshalers. Should this occur before the nil check?
+		unmarshal := valFncs.unmarshal
+		if uo.Unmarshalers != nil {
+			unmarshal = uo.Unmarshalers.lookup(unmarshal, t.Elem())
+		}
 		if va.IsNil() {
 			va.Set(reflect.New(t.Elem()))
 		}
@@ -835,7 +867,10 @@ func makeInterfaceArshaler(t reflect.Type) *arshaler {
 		}
 		v := newAddressableValue(va.Elem().Type())
 		v.Set(va.Elem())
-		marshal := lookupArshaler(v.Type()).marshal // TODO: Handle custom arshalers. Should this occur before the nil check?
+		marshal := lookupArshaler(v.Type()).marshal
+		if mo.Marshalers != nil {
+			marshal = mo.Marshalers.lookup(marshal, v.Type())
+		}
 		return marshal(mo, enc, v)
 	}
 	fncs.unmarshal = func(uo UnmarshalOptions, dec *Decoder, va addressableValue) error {
@@ -879,7 +914,10 @@ func makeInterfaceArshaler(t reflect.Type) *arshaler {
 			v = newAddressableValue(va.Elem().Type())
 			v.Set(va.Elem())
 		}
-		unmarshal := lookupArshaler(v.Type()).unmarshal // TODO: Handle custom arshalers. Should this occur before the nil check?
+		unmarshal := lookupArshaler(v.Type()).unmarshal
+		if uo.Unmarshalers != nil {
+			unmarshal = uo.Unmarshalers.lookup(unmarshal, v.Type())
+		}
 		err := unmarshal(uo, dec, v)
 		va.Set(v.Value)
 		return err
