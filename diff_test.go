@@ -281,3 +281,21 @@ func TestMapDeterminism(t *testing.T) {
 		}
 	})
 }
+
+func TestICE(t *testing.T) {
+	in := []byte(`{
+		"alpha": 1.000000000e1000,
+		"bravo": [null, false, true],
+		"charlie": {"fizz": "buzz", "foo":  "bar", "fizz": "jazz"}
+	}`)
+	var v interface{}
+	jsonv2.UnmarshalOptions{
+		Unmarshalers: jsonv2.UnmarshalFuncV2(func(opts jsonv2.UnmarshalOptions, dec *jsonv2.Decoder, val *interface{}) (err error) {
+			if dec.PeekKind() == '0' {
+				*val = jsonv2.RawValue(nil)
+			}
+			return jsonv2.SkipFunc
+		}),
+	}.Unmarshal(jsonv2.DecodeOptions{}, in, &v)
+	t.Error(v)
+}
