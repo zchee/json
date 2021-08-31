@@ -129,7 +129,13 @@ type UnmarshalerV2 interface {
 // Unmarshalers is a list of functions that may override the unmarshal behavior
 // of specific types. Populate UnmarshalOptions.Unmarshalers to use it.
 // A nil *Unmarshalers is equivalent to an empty list.
-type Unmarshalers struct{}
+type Unmarshalers struct {
+	unmarshalers
+}
+
+type unmarshalers struct {
+	fncVals []typedUnmarshaler
+}
 
 // NewUnmarshalers constructs a list of unmarshal functions to override
 // the unmarshal behavior for specific types.

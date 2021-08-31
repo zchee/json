@@ -32,10 +32,43 @@ func MarshalFuncV1[T any](fn func(T) ([]byte, error)) typedMarshaler {
 	}
 }
 
+type typedUnmarshaler struct {
+	typ     reflect.Type
+	fnc     unmarshaler
+	maySkip bool
+}
+
+func UnmarshalFuncV2[T any](fn func(UnmarshalOptions, *Decoder, T) error) *Unmarshalers {
+	t := reflect.TypeOf((*T)(nil)).Elem()
+	typFnc := typedUnmarshaler{
+		typ: t,
+		fnc: func(uo UnmarshalOptions, dec *Decoder, va addressableValue) error {
+			prevDepth, prevLength := dec.tokens.depthLength()
+			err := fn(uo, dec, va.Convert(t).Interface().(T))
+			currDepth, currLength := dec.tokens.depthLength()
+			if (prevDepth != currDepth || prevLength+1 != currLength) && err == nil {
+				err = errors.New("must read exactly one JSON value")
+			}
+			if err != nil {
+				if err == SkipFunc {
+					if prevDepth == currDepth && prevLength == currLength {
+						return SkipFunc
+					}
+					err = errors.New("must not read any JSON tokens when skipping")
+				}
+				// TODO: Avoid wrapping semantic, syntactic, or I/O errors.
+				return &SemanticError{action: "unmarshal", GoType: t, Err: err}
+			}
+			return nil
+		},
+		maySkip: true,
+	}
+	return &Unmarshalers{unmarshalers{fncVals: []typedUnmarshaler{typFnc}}}
+}
+
+
 func init() {
-	NewMarshalers(
-		MarshalFuncV1(func(string) ([]byte, error) {
-			return []byte("hello"), nil
-		}),
-	)
+	_ = UnmarshalFuncV2(func(UnmarshalOptions, *Decoder, string) error {
+		return nil
+	})
 }
